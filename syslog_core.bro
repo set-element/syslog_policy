@@ -20,7 +20,7 @@ export {
 	# for SYSLOG_PARSE logging stream
 	redef enum Log::ID += { LOG };
 
-	global data_file = "/data/home/scottc/e";
+	global data_file = "/data/log/everything/messages-24hrsworth";
 	
 	global kv_splitter: pattern = /[\ \t]+/;
 	global one_space: string = " ";
@@ -65,13 +65,14 @@ export {
 	# table to hold gatekeeper recs
 	#  indexed by [resp_h,pid] => string
 	global gc_table: table[string] of gatekeeperRec;
+
 	const input_low_water:count = 10 &redef;
-	const input_high_water:count = 100 &redef;
-	const input_test_interval:interval = 60 sec &redef;
+	const input_test_interval:interval = 10 sec &redef;
+
 	# track input rate ( events/input_test_interval)
-	global input_count: count = 1;
-	global input_count_prev: count = 1;
-	global stop_sem = 0;
+	global input_count: count = 1 &redef;
+	global input_count_prev: count = 1 &redef;
+	global stop_sem = 0 &redef;
 
 	} # end export
 
@@ -169,7 +170,7 @@ function failed_f(data: string) : count
 	local log_source_ip = parts[4];
 	local auth_id = parts[parts_len - 5];
 	local orig_h = parts[parts_len - 3];
-	local orig_p = parts[parts_len - 1];
+	local orig_p = fmt("%s/tcp",parts[parts_len - 1]);
 
 	# Finally, for the one value in the middle, we have to do
 	#  some nasty parsing ...
@@ -258,11 +259,15 @@ function nim_login_f(raw_data: string) : count
 
 	return 0;
 	}
-
+# Oct  5 19:32:15 128.55.81.150 BROEVENT USER_DATA 1381026735.000000 client newt shuber "<bound method QueueResourceAdapter.method_proxy of <newt.queue.v ...
+#
 function nersc_sec_api_f(data: string) : count
 	{
+	print fmt("SEC API: %s", data);
+	local be_pattern: pattern = /" BROEVENT "/;	
 
 
+	return 0;
 	}
 
 function gatekeeper_f(data: string) : count
@@ -418,6 +423,8 @@ event line(description: Input::EventDescription, tpe: Input::Event, LV: lineVals
 	#  Sep 20 00:13:45 128.55.58.73 sshd[21332]: Accepted publickey for ewiedner from 128.55.58.77 port 54641 ssh2
 	#  Sep 20 12:42:51 128.55.22.194 httpd[21838]: nersc.gov 128.55.22.8 - - [20/Sep/2013:12:42:51 -0700] "GET /lbstatus HTTP/1.0" 301 238 "-" "-"
 	#
+	++input_count;
+
 	local parts = split(LV$d, kv_splitter);
 	local event_name = parts[5];
 	local event_action = parts[6];
@@ -447,6 +454,7 @@ event line(description: Input::EventDescription, tpe: Input::Event, LV: lineVals
 event stop_reader()
         {
         if ( stop_sem == 0 ) {
+		print fmt("%s          stop-reader", gethostname());
                 Input::remove("syslog");
                 stop_sem = 1;
                 }
@@ -455,35 +463,41 @@ event stop_reader()
 event start_reader()
         {
         if ( stop_sem == 1 ) {
+		print fmt("%s          start-reader", gethostname());
                 Input::add_event([$source=data_file, $reader=Input::READER_RAW, $mode=Input::TSTREAM, $name="syslog", $fields=lineVals, $ev=line]);
                 stop_sem = 0;
                 }
         }
 
-event transaction_rate() 
+event sys_transaction_rate() 
 	{
 	local delta = input_count - input_count_prev;
+	print fmt("%s %s in transaction test: %d - %d = %d", gethostname(), Cluster::local_node_type(), input_count, input_count_prev, delta);
 
-	if ( (delta > 0) && (delta < input_low_water) ) {
+	if ( (delta >= 0) && (delta < input_low_water) ) {
+		print fmt("     delta pass");
 		schedule 1 sec { stop_reader() };
-		schedule 2 sec { start_reader() };
+		schedule 5 sec { start_reader() };
 		}
 
 	input_count_prev = input_count;
-	schedule input_test_interval { transaction_rate() };
+	schedule input_test_interval { sys_transaction_rate() };
 	}
 event bro_init()
 	{
 	# give this a try - do not spin up the input framework in the event
 	#   that the file is DNE
 	#
-	if ( file_size(data_file) != -1.0 ) {
+	if ( (Cluster::local_node_type() == Cluster::WORKER) && (file_size(data_file) != -1.0) ) {
+		print fmt("%s SYSLOG data file %s loated", gethostname(), data_file);
 		event set_year();
 		Input::add_event([$source=data_file, $reader=Input::READER_RAW, $mode=Input::TSTREAM, $name="syslog", $fields=lineVals, $ev=line]);
 
 		# start rate monitoring for event stream
-		schedule input_test_interval { transaction_rate() };
+		schedule input_test_interval { sys_transaction_rate() };
 		}
+	else
+		print fmt("%s SYSLOG data file %s missing", gethostname(), data_file);
 
 	Log::create_stream(SYSLOG_PARSE::LOG, [$columns=gatekeeperRec]);
 	}

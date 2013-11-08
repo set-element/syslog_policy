@@ -20,7 +20,7 @@ export {
 	# for SYSLOG_PARSE logging stream
 	redef enum Log::ID += { LOG };
 
-	global data_file = "/data/log/everything/messages-24hrsworth";
+	global data_file = "/" &redef;
 	
 	global kv_splitter: pattern = /[\ \t]+/;
 	global one_space: string = " ";
@@ -483,8 +483,10 @@ event sys_transaction_rate()
 	input_count_prev = input_count;
 	schedule input_test_interval { sys_transaction_rate() };
 	}
-event bro_init()
+
+event init_datastream()
 	{
+
 	# give this a try - do not spin up the input framework in the event
 	#   that the file is DNE
 	#
@@ -500,6 +502,12 @@ event bro_init()
 		print fmt("%s SYSLOG data file %s missing", gethostname(), data_file);
 
 	Log::create_stream(SYSLOG_PARSE::LOG, [$columns=gatekeeperRec]);
+
+	}
+
+event bro_init()
+	{
+	schedule 1 sec { init_datastream() };
 	}
 
 

@@ -11,7 +11,7 @@
 
 @load frameworks/communication/listen
 @load base/frameworks/input
-@load user_core
+@load host_core
 
 module SYSLOG_PARSE;
 
@@ -74,6 +74,7 @@ export {
 	global input_count_prev: count = 1 &redef;
 	global stop_sem = 0 &redef;
 
+	const DATANODE = F &redef;
 	} # end export
 
 function build_connid(orig_h:addr, orig_p:port , log_source_ip:addr, resp_p:port) : conn_id
@@ -95,10 +96,20 @@ function build_connid(orig_h:addr, orig_p:port , log_source_ip:addr, resp_p:port
 #
 function time_convert(data: string) : time
 	{
-	local parse_string: string = "%Z %Y %b %d %H:%M:%S";
+	# The string converter seems to be slightly OS dependant.  
+	# Linux:
+	local parse_string: string = "%Y %B %d %T";
+	# FreeBSD:
+	#local parse_string: string = "%Z %Y %b %d %H:%M:%S";
+	local date_mod = "NULL";
 
 	# first convert the string to a known quantity
-	local date_mod = fmt("%s %s %s", tzone,year,data);
+	# like parse_string, we can get away with not having the
+	#   time zone in the equsn.
+	# Linux:  
+	date_mod = fmt("%s %s", year,data);
+	# FreeBSD
+	#date_mod = fmt("%s %s %s", tzone,year,data);
 
 	# second, make sure that any extra spaces in the date string are expunged...
 	local date_mod_p = gsub(date_mod, kv_splitter, one_space);
@@ -117,7 +128,7 @@ function accepted_f(data: string) : count
 	local auth_type = parts[7];
 	local auth_id = parts[9];
 	local orig_h = parts[11];
-	# convert into bor port type
+	# convert into bro port type
 	local orig_p = fmt("%s/tcp", parts[13]);
 
 	local month = parts[1];
@@ -128,9 +139,9 @@ function accepted_f(data: string) : count
 
 	local cid: conn_id = build_connid( to_addr(orig_h), to_port(orig_p), to_addr(log_source_ip), to_port("22/tcp"));
 
-	print fmt("ACCEPT %s[%s] @ %s:%s -> %s", auth_id, auth_type, orig_h, orig_p, log_source_ip);
+	#print fmt("ACCEPT %s[%s] @ %s:%s -> %s", auth_id, auth_type, orig_h, orig_p, log_source_ip);
 
-	event USER_CORE::auth_transaction(ts, "-", cid , auth_id, log_source_ip, "SYSLOG_SSH", "AUTHENTICATION", "ACCEPTED", auth_type, "DATA");
+	event USER_CORE::auth_transaction(ts, "NULL", cid , auth_id, log_source_ip, "SYSLOG_SSH", "AUTHENTICATION", "ACCEPTED", auth_type, "DATA");
 	return 0;
 	}
 
@@ -143,7 +154,8 @@ function postponed_f(data: string) : count
 	local auth_type = parts[7];
 	local auth_id = parts[9];
 	local orig_h = parts[11];
-	local orig_p = parts[13];
+	# convert into bro port type
+	local orig_p = fmt("%s/tcp", parts[13]);
 
 	local month = parts[1];
 	local day   = parts[2];
@@ -153,8 +165,8 @@ function postponed_f(data: string) : count
 
 	local cid: conn_id = build_connid( to_addr(orig_h), to_port(orig_p), to_addr(log_source_ip), to_port("22/tcp"));
 
-	print fmt("POSTPONED %s[%s] @ %s:%s -> %s", auth_id, auth_type, orig_h, orig_p, log_source_ip);
-	event USER_CORE::auth_transaction(ts, "-", cid , auth_id, log_source_ip, "SYSLOG_SSH", "AUTHENTICATION", "POSTPONED", auth_type, "DATA");
+	#print fmt("POSTPONED %s[%s] @ %s:%s -> %s", auth_id, auth_type, orig_h, orig_p, log_source_ip);
+	event USER_CORE::auth_transaction(ts, "NULL", cid , auth_id, log_source_ip, "SYSLOG_SSH", "AUTHENTICATION", "POSTPONED", auth_type, "DATA");
 	return 0;
 	}
 
@@ -187,8 +199,8 @@ function failed_f(data: string) : count
 
 	local cid: conn_id = build_connid( to_addr(orig_h), to_port(orig_p), to_addr(log_source_ip), to_port("22/tcp"));
 
-	print fmt("FAIL   %s[%s] @ %s:%s -> %s", auth_id, auth_type, orig_h, orig_p, log_source_ip);
-	event USER_CORE::auth_transaction(ts, "-", cid , auth_id, log_source_ip, "SYSLOG_SSH", "AUTHENTICATION", "FAILED", auth_type, "DATA");
+	#print fmt("FAIL   %s[%s] @ %s:%s -> %s", auth_id, auth_type, orig_h, orig_p, log_source_ip);
+	event USER_CORE::auth_transaction(ts, "NULL", cid , auth_id, log_source_ip, "SYSLOG_SSH", "AUTHENTICATION", "FAILED", auth_type, "DATA");
 	return 0;
 	}
 
@@ -204,7 +216,7 @@ function failed_f(data: string) : count
 
 function nim_login_f(raw_data: string) : count
 	{
-	print fmt("%s", raw_data);
+	#print fmt("%s", raw_data);
 	local parts = split(raw_data, kv_splitter);
 	local sc_splitter: pattern = /:/;
 	local comma_p: pattern = /,/;
@@ -254,8 +266,8 @@ function nim_login_f(raw_data: string) : count
 	
 		}
 
-	print fmt("NIM_AUTH   %s %s PASSWD %s %s", auth_id, log_source_ip, action, data);
-	event USER_CORE::auth_transaction(ts, "-", cid , auth_id, log_source_ip, "SYSLOG_NIM", "AUTHENTICATION", action, "PASSWORD", data);
+	#print fmt("NIM_AUTH   %s %s PASSWD %s %s", auth_id, log_source_ip, action, data);
+	event USER_CORE::auth_transaction(ts, "NULL", cid , auth_id, log_source_ip, "SYSLOG_NIM", "AUTHENTICATION", action, "PASSWORD", data);
 
 	return 0;
 	}
@@ -385,7 +397,7 @@ function gatekeeper_f(data: string) : count
 		# then figure something out to give to the central authwatch
 		#
 		local cid: conn_id = build_connid( to_addr(t_gcr$orig_h), to_port("0/tcp"), to_addr(t_gcr$log_source_ip), to_port("0/tcp"));
-		event USER_CORE::auth_transaction(t_gcr$start, "-", cid , t_gcr$l_user, t_gcr$log_source_ip, "GATEKEEPER", "AUTHENTICATION", t_gcr$success, "GLOBUS", t_gcr$g_user);
+		event USER_CORE::auth_transaction(t_gcr$start, "NULL", cid , t_gcr$l_user, t_gcr$log_source_ip, "GATEKEEPER", "AUTHENTICATION", t_gcr$success, "GLOBUS", t_gcr$g_user);
 
 		}
 
@@ -396,7 +408,7 @@ function gatekeeper_f(data: string) : count
 redef dispatcher += {
 	["ACCEPTED"] = accepted_f,
 	["POSTPONED"] = postponed_f,
-	["Failed"] = failed_f,
+	["FAILED"] = failed_f,
 	["NIM_LOGIN"] = nim_login_f,
 	["BROEVENT"] = nersc_sec_api_f,
 	["GATEKEEPER"] = gatekeeper_f,
@@ -426,8 +438,14 @@ event line(description: Input::EventDescription, tpe: Input::Event, LV: lineVals
 	++input_count;
 
 	local parts = split(LV$d, kv_splitter);
-	local event_name = parts[5];
-	local event_action = parts[6];
+	local event_name = "NULL";
+	local event_action = "NULL";
+
+	if ( |parts| < 6 )
+		return;
+
+	event_name = parts[5];
+	event_action = to_upper(parts[6]);
 
 	if ( sshd_pattern == event_name ) {
 		if ( event_action in dispatcher) 
@@ -454,7 +472,7 @@ event line(description: Input::EventDescription, tpe: Input::Event, LV: lineVals
 event stop_reader()
         {
         if ( stop_sem == 0 ) {
-		print fmt("%s          stop-reader", gethostname());
+		#print fmt("%s          stop-reader", gethostname());
                 Input::remove("syslog");
                 stop_sem = 1;
                 }
@@ -463,7 +481,7 @@ event stop_reader()
 event start_reader()
         {
         if ( stop_sem == 1 ) {
-		print fmt("%s          start-reader", gethostname());
+		#print fmt("%s          start-reader", gethostname());
                 Input::add_event([$source=data_file, $reader=Input::READER_RAW, $mode=Input::TSTREAM, $name="syslog", $fields=lineVals, $ev=line]);
                 stop_sem = 0;
                 }
@@ -472,10 +490,8 @@ event start_reader()
 event sys_transaction_rate() 
 	{
 	local delta = input_count - input_count_prev;
-	print fmt("%s %s in transaction test: %d - %d = %d", gethostname(), Cluster::local_node_type(), input_count, input_count_prev, delta);
 
 	if ( (delta >= 0) && (delta < input_low_water) ) {
-		print fmt("     delta pass");
 		schedule 1 sec { stop_reader() };
 		schedule 5 sec { start_reader() };
 		}
@@ -490,16 +506,12 @@ event init_datastream()
 	# give this a try - do not spin up the input framework in the event
 	#   that the file is DNE
 	#
-	if ( (Cluster::local_node_type() == Cluster::WORKER) && (file_size(data_file) != -1.0) ) {
-		print fmt("%s SYSLOG data file %s loated", gethostname(), data_file);
-		event set_year();
+	if ( DATANODE && (file_size(data_file) != -1.0) ) {
 		Input::add_event([$source=data_file, $reader=Input::READER_RAW, $mode=Input::TSTREAM, $name="syslog", $fields=lineVals, $ev=line]);
 
 		# start rate monitoring for event stream
 		schedule input_test_interval { sys_transaction_rate() };
 		}
-	else
-		print fmt("%s SYSLOG data file %s missing", gethostname(), data_file);
 
 	Log::create_stream(SYSLOG_PARSE::LOG, [$columns=gatekeeperRec]);
 
@@ -507,6 +519,7 @@ event init_datastream()
 
 event bro_init()
 	{
+	event set_year();
 	schedule 1 sec { init_datastream() };
 	}
 

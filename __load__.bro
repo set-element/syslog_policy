@@ -1,1 +1,1 @@
-@load syslog_core.bro
+@load SyslogReader/syslog_core.bro

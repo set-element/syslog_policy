@@ -20,6 +20,11 @@ export {
 	# for SYSLOG_PARSE logging stream
 	redef enum Log::ID += { LOG };
 
+        redef enum Notice::Type += {
+                SYSLOG_INPUT_LowTransactionRate,
+                SYSLOG_INPUT_HighTransactionRate,
+		};
+
 	global data_file = "/" &redef;
 	
 	global kv_splitter: pattern = /[\ \t]+/;
@@ -66,13 +71,20 @@ export {
 	#  indexed by [resp_h,pid] => string
 	global gc_table: table[string] of gatekeeperRec;
 
-	const input_low_water:count = 10 &redef;
-	const input_test_interval:interval = 10 sec &redef;
-
-	# track input rate ( events/input_test_interval)
-	global input_count: count = 1 &redef;
-	global input_count_prev: count = 1 &redef;
 	global stop_sem = 0 &redef;
+
+        # track the transaction rate - notice on transition between low and high water rates
+        # this is count per input_test_interval
+        const input_count_test = T &redef;
+        const input_low_water:count = 10 &redef;
+        const input_high_water:count = 10000 &redef;
+        const input_test_interval:interval = 60 sec &redef;
+        # track input rate ( events/input_test_interval)
+        global input_count: count = 1 &redef;
+        global input_count_prev: count = 1 &redef;
+        global input_count_delta: count = 0 &redef;
+        #  0=pre-init, 1=ok, 2=in low error
+        global input_count_state: count = 0 &redef;
 
 	const DATANODE = F &redef;
 	} # end export
@@ -489,18 +501,54 @@ event start_reader()
 
 event sys_transaction_rate() 
 	{
-	local delta = input_count - input_count_prev;
+        # Values for input_count_state:
+        #  0=pre-init, 1=ok, 2=in error
+        # We make the assumption here that the low_water < high_water
+        # Use a global for input_count_delta so that the value is consistent across
+        #   anybody looking at it.
+        input_count_delta = input_count - input_count_prev;
+        #print fmt("%s Log delta: %s", network_time(),delta);
 
-	if ( (delta >= 0) && (delta < input_low_water) ) {
-		schedule 1 sec { stop_reader() };
-		schedule 5 sec { start_reader() };
-		}
+        # rate is too low - send a notice the first time
+        if (input_count_delta <= input_low_water) {
 
-	input_count_prev = input_count;
-	schedule input_test_interval { sys_transaction_rate() };
+                # only send the notice on the first instance
+                if ( input_count_state != 2 ) {
+                        NOTICE([$note=SYSLOG_INPUT_LowTransactionRate,
+                                $msg=fmt("event rate %s per %s", input_count_delta, input_test_interval)]);
+
+                        input_count_state = 2; # 2: transaction rate
+                        }
+
+                # Now reset the reader
+                schedule 1 sec { stop_reader() };
+                schedule 10 sec { start_reader() };
+                }
+        # rate is too high - send a notice the first time
+        if (input_count_delta >= input_high_water) {
+
+                # only send the notice on the first instance
+                if ( input_count_state != 2 ) {
+                        NOTICE([$note=SYSLOG_INPUT_HighTransactionRate,
+                                $msg=fmt("event rate %s per %s", input_count_delta, input_test_interval)]);
+
+                        input_count_state = 2; # 2: transaction rate
+                        }
+                }
+
+        # rate is ok
+        if ( (input_count_delta > input_low_water) && (input_count_delta < input_high_water) ) {
+                input_count_state = 1;
+                }
+
+        # rotate values
+        input_count_prev = input_count;
+
+        # reschedule this all over again ...
+        schedule input_test_interval { transaction_rate() };
 	}
 
-event init_datastream()
+function init_datastream(): count
 	{
 
 	# give this a try - do not spin up the input framework in the event
@@ -520,7 +568,7 @@ event init_datastream()
 event bro_init()
 	{
 	event set_year();
-	schedule 1 sec { init_datastream() };
+	init_datastream();
 	}
 
 

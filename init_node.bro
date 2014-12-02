@@ -11,4 +11,6 @@
 # host=sigma-n
 # aux_scripts="isshd_policy/init_node"
 #
+@load SyslogReader
 redef SYSLOG_PARSE::DATANODE = T;
+redef SYSLOG_PARSE::data_file = "/home/bro/logs/RAW/DATA_0";

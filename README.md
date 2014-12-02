@@ -12,6 +12,23 @@ which tracks aggrigate activity across multiplle sources.
 The code has been written to facilitate it being implemented on a worker node which 
 reports back to the manager who is responsible for tracking aggrigate behaviors.
 
+To local master config:
+
+@ifdef (SYSLOG_PARSE::data_file)
+redef SYSLOG_PARSE::data_file = "/home/bro/logs/RAW/DATA_0";
+@endif
+
+redef Cluster::worker2manager_events += /SYSLOG_PARSE*/;
+
+node config:
+
+[syslog]
+type=worker
+host=sigma-n
+aux_scripts="SyslogReader/init_node"
+
+
+
 Line add
 
 

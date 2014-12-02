@@ -13,12 +13,16 @@
 @load base/frameworks/input
 @load host_core
 
+@load SyslogReader/syslog_httpd
+@load SyslogReader/syslog_secAPI
+
 module SYSLOG_PARSE;
 
 export {
 
 	# for SYSLOG_PARSE logging stream
 	redef enum Log::ID += { LOG };
+	redef enum Log::ID += { LOG2 };
 
         redef enum Notice::Type += {
                 SYSLOG_INPUT_LowTransactionRate,
@@ -34,6 +38,7 @@ export {
 	global sshd_pattern: pattern =/sshd\[[0-9]{1,8}\]./;
 	global nim_pattern: pattern =/nim-login\[[0-9]{1,8}\]./;
 	global bro_api_pattern: pattern =/newt|BROEVENT/;
+	global httpd_pattern: pattern = /httpd\[[0-9]{1,8}\]./;
 	const  gatekeeper_pattern: pattern = /.*gatekeeper\[[0-9]{1,8}\]./;
 
 	global year = "1970" &redef;	# this will be set at start time
@@ -67,7 +72,6 @@ export {
 		error_msg: string &log &default = "NULL";
 		};
 
-	# table to hold gatekeeper recs
 	#  indexed by [resp_h,pid] => string
 	global gc_table: table[string] of gatekeeperRec;
 
@@ -85,8 +89,11 @@ export {
         global input_count_delta: count = 0 &redef;
         #  0=pre-init, 1=ok, 2=in low error
         global input_count_state: count = 0 &redef;
-
 	const DATANODE = F &redef;
+
+	global build_connid: function(orig_h:addr, orig_p:port , log_source_ip:addr, resp_p:port) : conn_id;
+	global time_convert: function(data: string) : time;
+
 	} # end export
 
 function build_connid(orig_h:addr, orig_p:port , log_source_ip:addr, resp_p:port) : conn_id
@@ -136,6 +143,7 @@ function accepted_f(data: string) : count
 	# Aug 20 16:35:01 128.55.46.32 sshd[14920]: Accepted publickey for root from 10.32.46.16 port 38512 ssh2
 	local parts = split(data, kv_splitter);
 
+	local pid = parts[5];
 	local log_source_ip = parts[4];
 	local auth_type = parts[7];
 	local auth_id = parts[9];
@@ -150,10 +158,12 @@ function accepted_f(data: string) : count
 	local ts = time_convert(timestamp);
 
 	local cid: conn_id = build_connid( to_addr(orig_h), to_port(orig_p), to_addr(log_source_ip), to_port("22/tcp"));
+	local key = fmt("%s", sha1_hash(log_source_ip, pid, orig_h, orig_p));
+print fmt("KEY ACCEPT: %s %s %s %s %s %s", auth_id, key,log_source_ip, pid, orig_h, orig_p);
 
 	#print fmt("ACCEPT %s[%s] @ %s:%s -> %s", auth_id, auth_type, orig_h, orig_p, log_source_ip);
 
-	event USER_CORE::auth_transaction(ts, "NULL", cid , auth_id, log_source_ip, "SYSLOG_SSH", "AUTHENTICATION", "ACCEPTED", auth_type, "DATA");
+	event USER_CORE::auth_transaction(ts, key, cid , auth_id, log_source_ip, "SYSLOG_SSH", "AUTHENTICATION", "ACCEPTED", auth_type, "DATA");
 	return 0;
 	}
 
@@ -162,6 +172,7 @@ function postponed_f(data: string) : count
 	# Sep 24 00:20:02 128.55.46.20 sshd[18584]: Postponed publickey for abc from 128.55.71.22 port 48329 ssh2
 	local parts = split(data, kv_splitter);
 
+	local pid = parts[5];
 	local log_source_ip = parts[4];
 	local auth_type = parts[7];
 	local auth_id = parts[9];
@@ -176,9 +187,10 @@ function postponed_f(data: string) : count
 	local ts = time_convert(timestamp);
 
 	local cid: conn_id = build_connid( to_addr(orig_h), to_port(orig_p), to_addr(log_source_ip), to_port("22/tcp"));
-
+	local key = fmt("%s", sha1_hash(log_source_ip, pid, orig_h, orig_p));
+print fmt("KEY POST: %s %s %s %s %s %s ", auth_id, key,log_source_ip, pid, orig_h, orig_p);
 	#print fmt("POSTPONED %s[%s] @ %s:%s -> %s", auth_id, auth_type, orig_h, orig_p, log_source_ip);
-	event USER_CORE::auth_transaction(ts, "NULL", cid , auth_id, log_source_ip, "SYSLOG_SSH", "AUTHENTICATION", "POSTPONED", auth_type, "DATA");
+	event USER_CORE::auth_transaction(ts, key, cid , auth_id, log_source_ip, "SYSLOG_SSH", "AUTHENTICATION", "POSTPONED", auth_type, "DATA");
 	return 0;
 	}
 
@@ -191,6 +203,7 @@ function failed_f(data: string) : count
 	local parts = split(data, kv_splitter);
 	local parts_len = | parts |;
 
+	local pid = parts[5];
 	local log_source_ip = parts[4];
 	local auth_id = parts[parts_len - 5];
 	local orig_h = parts[parts_len - 3];
@@ -210,9 +223,11 @@ function failed_f(data: string) : count
 	local ts = time_convert(timestamp);
 
 	local cid: conn_id = build_connid( to_addr(orig_h), to_port(orig_p), to_addr(log_source_ip), to_port("22/tcp"));
+	local key = fmt("%s", sha1_hash(log_source_ip, pid, orig_h, orig_p));
+print fmt("KEY FAIL: %s %s %s %s %s %s ", auth_id,key,log_source_ip, pid, orig_h, orig_p);
 
 	#print fmt("FAIL   %s[%s] @ %s:%s -> %s", auth_id, auth_type, orig_h, orig_p, log_source_ip);
-	event USER_CORE::auth_transaction(ts, "NULL", cid , auth_id, log_source_ip, "SYSLOG_SSH", "AUTHENTICATION", "FAILED", auth_type, "DATA");
+	event USER_CORE::auth_transaction(ts, key, cid , auth_id, log_source_ip, "SYSLOG_SSH", "AUTHENTICATION", "FAILED", auth_type, "DATA");
 	return 0;
 	}
 
@@ -422,8 +437,9 @@ redef dispatcher += {
 	["POSTPONED"] = postponed_f,
 	["FAILED"] = failed_f,
 	["NIM_LOGIN"] = nim_login_f,
-	["BROEVENT"] = nersc_sec_api_f,
+	["BROEVENT"] = SYSLOG_SECAPI::secapi_f,
 	["GATEKEEPER"] = gatekeeper_f,
+	["HTTPD"] = SYSLOG_HTTPD::httpd_f,
 	};
 
 event set_year()
@@ -444,7 +460,7 @@ event line(description: Input::EventDescription, tpe: Input::Event, LV: lineVals
 	# Each line is fed to this event where it is digested and sent to the dispatcher 
 	#  for appropriate processing
 	# 
-	#  Sep 20 00:13:45 128.55.58.73 sshd[21332]: Accepted publickey for ewiedner from 128.55.58.77 port 54641 ssh2
+	#  Sep 21 00:13:45 128.55.58.73 sshd[21332]: Accepted publickey for ewiedner from 128.55.58.77 port 54641 ssh2
 	#  Sep 20 12:42:51 128.55.22.194 httpd[21838]: nersc.gov 128.55.22.8 - - [20/Sep/2013:12:42:51 -0700] "GET /lbstatus HTTP/1.0" 301 238 "-" "-"
 	#
 	++input_count;
@@ -479,6 +495,10 @@ event line(description: Input::EventDescription, tpe: Input::Event, LV: lineVals
 			dispatcher[event_action](LV$d);
 		}
 
+	else if ( httpd_pattern == event_name ) {
+			event_action = "HTTPD";
+			dispatcher[event_action](LV$d);
+		}
 	}	
 
 event stop_reader()
@@ -507,7 +527,7 @@ event sys_transaction_rate()
         # Use a global for input_count_delta so that the value is consistent across
         #   anybody looking at it.
         input_count_delta = input_count - input_count_prev;
-        #print fmt("%s Log delta: %s", network_time(),delta);
+        print fmt("%s SYSLOG Log delta: %s", network_time(),input_count_delta);
 
         # rate is too low - send a notice the first time
         if (input_count_delta <= input_low_water) {
@@ -545,7 +565,7 @@ event sys_transaction_rate()
         input_count_prev = input_count;
 
         # reschedule this all over again ...
-        schedule input_test_interval { transaction_rate() };
+        schedule input_test_interval { sys_transaction_rate() };
 	}
 
 function init_datastream(): count
@@ -562,7 +582,7 @@ function init_datastream(): count
 		}
 
 	Log::create_stream(SYSLOG_PARSE::LOG, [$columns=gatekeeperRec]);
-
+	return 0;
 	}
 
 event bro_init()

@@ -141,19 +141,19 @@ function time_convert(data: string) : time
 function accepted_f(data: string) : count
 	{
 	# Aug 20 16:35:01 128.55.46.32 sshd[14920]: Accepted publickey for root from 10.32.46.16 port 38512 ssh2
-	local parts = split(data, kv_splitter);
+	local parts = split_string(data, kv_splitter);
 
-	local pid = parts[5];
-	local log_source_ip = parts[4];
-	local auth_type = parts[7];
-	local auth_id = parts[9];
-	local orig_h = parts[11];
+	local pid = parts[4];
+	local log_source_ip = parts[3];
+	local auth_type = parts[6];
+	local auth_id = parts[8];
+	local orig_h = parts[10];
 	# convert into bro port type
-	local orig_p = fmt("%s/tcp", parts[13]);
+	local orig_p = fmt("%s/tcp", parts[12]);
 
-	local month = parts[1];
-	local day   = parts[2];
-	local t  = parts[3];
+	local month = parts[0];
+	local day   = parts[1];
+	local t  = parts[2];
 	local timestamp = fmt("%s %s %s", month, day, t);
 	local ts = time_convert(timestamp);
 
@@ -170,19 +170,19 @@ print fmt("KEY ACCEPT: %s %s %s %s %s %s", auth_id, key,log_source_ip, pid, orig
 function postponed_f(data: string) : count
 	{
 	# Sep 24 00:20:02 128.55.46.20 sshd[18584]: Postponed publickey for abc from 128.55.71.22 port 48329 ssh2
-	local parts = split(data, kv_splitter);
+	local parts = split_string(data, kv_splitter);
 
-	local pid = parts[5];
-	local log_source_ip = parts[4];
-	local auth_type = parts[7];
-	local auth_id = parts[9];
-	local orig_h = parts[11];
+	local pid = parts[4];
+	local log_source_ip = parts[3];
+	local auth_type = parts[6];
+	local auth_id = parts[8];
+	local orig_h = parts[10];
 	# convert into bro port type
-	local orig_p = fmt("%s/tcp", parts[13]);
+	local orig_p = fmt("%s/tcp", parts[12]);
 
-	local month = parts[1];
-	local day   = parts[2];
-	local t  = parts[3];
+	local month = parts[0];
+	local day   = parts[1];
+	local t  = parts[2];
 	local timestamp = fmt("%s %s %s", month, day, t);
 	local ts = time_convert(timestamp);
 
@@ -200,25 +200,25 @@ function failed_f(data: string) : count
 	#  than the rest
 	local f_splitter: pattern = / Failed /;
 
-	local parts = split(data, kv_splitter);
+	local parts = split_string(data, kv_splitter);
 	local parts_len = | parts |;
 
-	local pid = parts[5];
-	local log_source_ip = parts[4];
+	local pid = parts[4];
+	local log_source_ip = parts[3];
 	local auth_id = parts[parts_len - 5];
 	local orig_h = parts[parts_len - 3];
 	local orig_p = fmt("%s/tcp",parts[parts_len - 1]);
 
 	# Finally, for the one value in the middle, we have to do
 	#  some nasty parsing ...
-	local tmp_set = split(data, f_splitter);
-	local tmp2_set = split(tmp_set[2], kv_splitter);
+	local tmp_set = split_string(data, f_splitter);
+	local tmp2_set = split_string(tmp_set[1], kv_splitter);
 
-	local auth_type = tmp2_set[1];
+	local auth_type = tmp2_set[0];
 
-	local month = parts[1];
-	local day   = parts[2];
-	local t  = parts[3];
+	local month = parts[0];
+	local day   = parts[1];
+	local t  = parts[2];
 	local timestamp = fmt("%s %s %s", month, day, t);
 	local ts = time_convert(timestamp);
 
@@ -244,7 +244,7 @@ print fmt("KEY FAIL: %s %s %s %s %s %s ", auth_id,key,log_source_ip, pid, orig_h
 function nim_login_f(raw_data: string) : count
 	{
 	#print fmt("%s", raw_data);
-	local parts = split(raw_data, kv_splitter);
+	local parts = split_string(raw_data, kv_splitter);
 	local sc_splitter: pattern = /:/;
 	local comma_p: pattern = /,/;
 	local invalid_u: pattern = /.*invalid username format.*/;
@@ -252,17 +252,17 @@ function nim_login_f(raw_data: string) : count
 	local action = "NULL";
 	local data = "DATA";
 
-	local log_source_ip = parts[4];
+	local log_source_ip = parts[3];
 
 	# take the second element for the user	
-	local auth_id = split(parts[6], sc_splitter)[2];
-	local orig_h = split(parts[7], sc_splitter)[2];
+	local auth_id = split_string(parts[5], sc_splitter)[1];
+	local orig_h = split_string(parts[6], sc_splitter)[1];
 	# just some random thing ...
 	local orig_p = "38476/tcp";
 
-	local month = parts[1];
-	local day   = parts[2];
-	local t  = parts[3];
+	local month = parts[0];
+	local day   = parts[1];
+	local t  = parts[2];
 	local timestamp = fmt("%s %s %s", month, day, t);
 	local ts = time_convert(timestamp);
 
@@ -270,14 +270,14 @@ function nim_login_f(raw_data: string) : count
 
 	# unpack the message part
 	# first snipp off the ':'
-	local msg = split(parts[8], sc_splitter)[2];
+	local msg = split_string(parts[7], sc_splitter)[1];
 	# then generate a set split on ','
-	local msg_data = split(msg, comma_p);
+	local msg_data = split_string(msg, comma_p);
 
-	if ( strcmp( msg_data[1], "login" ) == 0 ) {
+	if ( strcmp( msg_data[0], "login" ) == 0 ) {
 		action = "ACCEPTED";
 		}
-	else if ( strcmp( msg_data[1], "failed-login") == 0 ) {
+	else if ( strcmp( msg_data[0], "failed-login") == 0 ) {
 		action = "FAILED";
 		}
 
@@ -323,21 +323,21 @@ function gatekeeper_f(data: string) : count
 	local gc_p6: pattern = /.* Authenticated globus user.*/;	# id globus user
 	local gc_p7: pattern = /.*failed authorization.*/;
 
-	local parts = split(data, kv_splitter);
+	local parts = split_string(data, kv_splitter);
 
-	local log_source_ip = parts[4];
-	#local auth_type = parts[7];
-	#local auth_id = parts[9];
-	#local orig_h = parts[11];
-	#local orig_p = parts[13];
+	local log_source_ip = parts[3];
+	#local auth_type = parts[6];
+	#local auth_id = parts[8];
+	#local orig_h = parts[10];
+	#local orig_p = parts[12];
 
-	local month = parts[1];
-	local day   = parts[2];
-	local t  = parts[3];
+	local month = parts[0];
+	local day   = parts[1];
+	local t  = parts[2];
 	local timestamp = fmt("%s %s %s", month, day, t);
 	local ts = time_convert(timestamp);
 
-	local pid = split_all( data, pid_pattern )[2] ;
+	local pid = split_string_all( data, pid_pattern )[1] ;
 	local key = fmt("%s%s", pid, log_source_ip);
 
 	local t_gcr: gatekeeperRec;
@@ -360,29 +360,29 @@ function gatekeeper_f(data: string) : count
 		# extract the connecting IP
 
 		local tmp_pat: pattern = /"Got connection "/;
-		local t_p = split_all(data, tmp_pat)[3]; 	 # snip off IP and trailing
-		local t_ip = split(t_p, kv_splitter)[1]; # remove trailing
+		local t_p = split_string_all(data, tmp_pat)[2]; 	 # snip off IP and trailing
+		local t_ip = split_string(t_p, kv_splitter)[0]; # remove trailing
 
 		t_gcr$orig_h = t_ip;
 		record_mod = 1;
 		}
 	else if ( gc_p2 == data ) {	# /.* Requested service:.*/
-		t_gcr$service = parts[ |parts| -1  ];
+		t_gcr$service = parts[ |parts| - 2  ];
 
 		record_mod = 1;
 		}
 	else if ( gc_p3 == data ) {	# /.* Authorized as local user:.*/
-		t_gcr$l_user = parts[ |parts| ];
+		t_gcr$l_user = parts[ |parts| - 1 ];
 
 		record_mod = 1;
 		}
 	else if ( gc_p4 == data ) {	# /.* Authorized as local uid:.*/
-		t_gcr$l_uid = to_count(parts[ |parts| ]);
+		t_gcr$l_uid = to_count(parts[ |parts| - 1 ]);
 
 		record_mod = 1;
 		}
 	else if ( gc_p5 == data ) {	# /.*   and local gid:.*/
-		t_gcr$l_gid = to_count(parts[ |parts| ]);
+		t_gcr$l_gid = to_count(parts[ |parts| - 1 ]);
 		t_gcr$success = "ACCEPTED";
 
 		record_mod = 1;
@@ -391,7 +391,7 @@ function gatekeeper_f(data: string) : count
 	else if ( gc_p6 == data ) {	# /.* Authenticated globus user:.*/
 		# since the record can contain multiple spaces, we snip on the RE
 		local tmp_pat2: pattern = /" Authenticated globus user: "/;
-		local t_id = split_all(data, tmp_pat2)[3];	
+		local t_id = split_string_all(data, tmp_pat2)[2];	
 
 		t_gcr$g_user = t_id;
 
@@ -403,7 +403,7 @@ function gatekeeper_f(data: string) : count
 		# for the time being we can split on the general handler 	
 
 		local tmp_pat3: pattern = /"globus_gss_assist: "/;
-		t_gcr$error_msg = split_all(data, tmp_pat3)[3];
+		t_gcr$error_msg = split_string_all(data, tmp_pat3)[2];
 		t_gcr$success = "FAILED";
 
 		record_mod = 1;
@@ -465,15 +465,15 @@ event line(description: Input::EventDescription, tpe: Input::Event, LV: lineVals
 	#
 	++input_count;
 
-	local parts = split(LV$d, kv_splitter);
+	local parts = split_string(LV$d, kv_splitter);
 	local event_name = "NULL";
 	local event_action = "NULL";
 
 	if ( |parts| < 6 )
 		return;
 
-	event_name = parts[5];
-	event_action = to_upper(parts[6]);
+	event_name = parts[4];
+	event_action = to_upper(parts[5]);
 
 	if ( sshd_pattern == event_name ) {
 		if ( event_action in dispatcher) 

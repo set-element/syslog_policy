@@ -518,7 +518,7 @@ event start_reader()
 			["offset"] = "-1",
 			};
 
-		Input::add_event([$source=data_file, $config=config_strings, $reader=Input::READER_RAW, $mode=Input::STREAM, $name="isshd", $fields=lineVals, $ev=sshLine]);
+		Input::add_event([$source=data_file, $config=config_strings, $reader=Input::READER_RAW, $mode=Input::STREAM, $name="syslog", $fields=lineVals, $ev=sshLine]);
 
                 stop_sem = 0;
                 }
@@ -585,7 +585,7 @@ function init_datastream(): count
 			["offset"] = "-1",
 			};
 
-		Input::add_event([$source=data_file, $config=config_strings, $reader=Input::READER_RAW, $mode=Input::STREAM, $name="isshd", $fields=lineVals, $ev=sshLine]);
+		Input::add_event([$source=data_file, $config=config_strings, $reader=Input::READER_RAW, $mode=Input::STREAM, $name="syslog", $fields=lineVals, $ev=sshLine]);
 
 		# start rate monitoring for event stream
 		schedule input_test_interval { sys_transaction_rate() };

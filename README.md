@@ -31,4 +31,4 @@ aux_scripts="SyslogReader/init_node"
 
 Line add
 
-
+Changes made so that string() deprication is addressed, will need to be run on >= version 2.4

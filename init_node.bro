@@ -13,4 +13,3 @@
 #
 @load SyslogReader
 redef SYSLOG_PARSE::DATANODE = T;
-redef SYSLOG_PARSE::data_file = "/home/bro/logs/RAW/DATA_0";

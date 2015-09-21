@@ -67,30 +67,30 @@ function httpd_log_f(data: string) : count
         local t_HTTP_REQ: HTTP_REQ;
 
         # split on space
-        local parts_space = split(data, kv_splitter);
+        local parts_space = split_string(data, kv_splitter);
         # split on "
-        local parts_quote = split(data, /\"/);
+        local parts_quote = split_string(data, /\"/);
 
-        local log_source_ip = parts_space[4];
-        local domain_name = parts_space[6];
-        local client_ip = parts_space[7];
-        local ident = parts_space[8];
-        local uid = parts_space[9];
+        local log_source_ip = parts_space[3];
+        local domain_name = parts_space[5];
+        local client_ip = parts_space[6];
+        local ident = parts_space[7];
+        local uid = parts_space[8];
 
-        local request = parts_quote[2];
-        local referrer = parts_quote[4];
-        local client = parts_quote[6];
+        local request = parts_quote[1];
+        local referrer = parts_quote[3];
+        local client = parts_quote[5];
 
-        local sq = split(strip(parts_quote[3]), kv_splitter);
-        local stat_code = sq[1];
-        local resp_size = sq[2];
+        local sq = split_string(strip(parts_quote[2]), kv_splitter);
+        local stat_code = sq[0];
+        local resp_size = sq[1];
 
-        local sq2 = split( parts_quote[2], kv_splitter);
-        local method = sq2[1];
+        local sq2 = split_string( parts_quote[1], kv_splitter);
+        local method = sq2[0];
 
-        local month = parts_space[1];
-        local day   = parts_space[2];
-        local t  = parts_space[3];
+        local month = parts_space[0];
+        local day   = parts_space[1];
+        local t  = parts_space[2];
         local timestamp = fmt("%s %s %s", month, day, t);
         local ts = time_convert(timestamp);
 
@@ -121,10 +121,10 @@ function httpd_error_f(data: string): count
 function httpd_f(data: string) : count
 	{
 	local error_log: pattern = /.*\[error\].*/;
-        local parts_space = split(data, kv_splitter);
+        local parts_space = split_string(data, kv_splitter);
 
 	# route log vs error
-	if ( error_log == parts_space[6] ) {
+	if ( error_log == parts_space[5] ) {
 		httpd_error_f(data);
 		}
 	else {
@@ -137,4 +137,6 @@ function httpd_f(data: string) : count
 event bro_init()
 {
 	Log::create_stream(SYSLOG_HTTPD::LOG, [$columns=HTTP_REQ]);
+	local filter_c: Log::Filter = [$name="default", $path="syslog_httpd"];
+	Log::add_filter(LOG, filter_c);
 }

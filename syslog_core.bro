@@ -592,6 +592,9 @@ function init_datastream(): count
 		}
 
 	Log::create_stream(SYSLOG_PARSE::LOG, [$columns=gatekeeperRec]);
+	local filter_c: Log::Filter = [$name="default", $path="syslog_core"];
+	Log::add_filter(LOG, filter_c);
+
 	return 0;
 	}
 

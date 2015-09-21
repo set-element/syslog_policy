@@ -78,24 +78,24 @@ function user_auth_f(data: string): count
 	# Nov 26 04:45:38 128.55.81.150 <EF><BB><BF>BROEVENT USER_AUTH 1417005938.000000 newt angela 1 0 NOMESSAGE
 	# Fill in time info
 	local t_SAPI_REQ: SAPI_REQ;
-	local parts_space = split(data, kv_splitter);
+	local parts_space = split_string(data, kv_splitter);
 
-        local month = parts_space[1];
-        local day   = parts_space[2];
-        local t  = parts_space[3];
+        local month = parts_space[0];
+        local day   = parts_space[1];
+        local t  = parts_space[2];
         local timestamp = fmt("%s %s %s", month, day, t);
         local ts = time_convert(timestamp);
 
-        local log_source_ip = parts_space[4];
-	local eventTime = parts_space[7];
-	local eventService = parts_space[8];
-	local eventUid = parts_space[9];
-	local eventResult = sapi_auth_res[to_count(parts_space[10])];
-	local eventMethod = sapi_auth_meth[to_count(parts_space[11])];
+        local log_source_ip = parts_space[3];
+	local eventTime = parts_space[6];
+	local eventService = parts_space[7];
+	local eventUid = parts_space[8];
+	local eventResult = sapi_auth_res[to_count(parts_space[9])];
+	local eventMethod = sapi_auth_meth[to_count(parts_space[10])];
 	local eventMessage = parts_space[12];
 
 	t_SAPI_REQ$ts = ts;
-	t_SAPI_REQ$ftype = parts_space[6];
+	t_SAPI_REQ$ftype = parts_space[5];
 	t_SAPI_REQ$api_ts = eventTime;
 	t_SAPI_REQ$service = eventService;
 	t_SAPI_REQ$uid = eventUid;
@@ -114,25 +114,25 @@ function user_data_f(data: string): count
 	# Nov 26 00:00:12 128.55.81.150 
 	# BROEVENT USER_DATA 1416988812.000000 client newt joalbert "<bound method NimAdapter.get of <newt.account.views.NimAdapter object at 0x7fb4b1074750>>", "()", "{'path': u'/user/yundi/persons'}"
 	local t_SAPI_REQ: SAPI_REQ;
-	local parts_space = split(data, kv_splitter);
+	local parts_space = split_string(data, kv_splitter);
 	# Fill in time info
-        local month = parts_space[1];
-        local day   = parts_space[2];
-        local t  = parts_space[3];
+        local month = parts_space[0];
+        local day   = parts_space[1];
+        local t  = parts_space[2];
         local timestamp = fmt("%s %s %s", month, day, t);
         local ts = time_convert(timestamp);
 
-        local log_source_ip = parts_space[4];
+        local log_source_ip = parts_space[3];
 
-	local eventTime = parts_space[7];
-	local eventDirection = parts_space[8];
-	local eventService = parts_space[9];
-        local eventUid = parts_space[10];
-	local data_q = split(data, /\"/);
-	local eventData = fmt("%s %s %s", data_q[2], data_q[4], data_q[6]);
+	local eventTime = parts_space[6];
+	local eventDirection = parts_space[7];
+	local eventService = parts_space[8];
+        local eventUid = parts_space[9];
+	local data_q = split_string(data, /\"/);
+	local eventData = fmt("%s %s %s", data_q[1], data_q[3], data_q[5]);
 
         t_SAPI_REQ$ts = ts;
-        t_SAPI_REQ$ftype = parts_space[6];
+        t_SAPI_REQ$ftype = parts_space[5];
         t_SAPI_REQ$api_ts = eventTime;
         t_SAPI_REQ$service = eventService;
         t_SAPI_REQ$uid = eventUid;
@@ -147,75 +147,75 @@ function user_data_f(data: string): count
 function user_exec_f(data: string): count
 	{
 
-	local parts_space = split(data, kv_splitter);
+	local parts_space = split_string(data, kv_splitter);
 	# Fill in time info
-        local month = parts_space[1];
-        local day   = parts_space[2];
-        local t  = parts_space[3];
+        local month = parts_space[0];
+        local day   = parts_space[1];
+        local t  = parts_space[2];
         local timestamp = fmt("%s %s %s", month, day, t);
         local ts = time_convert(timestamp);
 
-        local log_source_ip = parts_space[4];
+        local log_source_ip = parts_space[3];
 	return 0;
 	}
 
 function port_forward_f(data: string): count
 	{
 
-	local parts_space = split(data, kv_splitter);
+	local parts_space = split_string(data, kv_splitter);
 	# Fill in time info
-        local month = parts_space[1];
-        local day   = parts_space[2];
-        local t  = parts_space[3];
+        local month = parts_space[0];
+        local day   = parts_space[1];
+        local t  = parts_space[2];
         local timestamp = fmt("%s %s %s", month, day, t);
         local ts = time_convert(timestamp);
 
-        local log_source_ip = parts_space[4];
+        local log_source_ip = parts_space[3];
 	return 0;
 	}
 
 function connection_event_f(data: string): count
 	{
 
-	local parts_space = split(data, kv_splitter);
+	local parts_space = split_string(data, kv_splitter);
 	# Fill in time info
-        local month = parts_space[1];
-        local day   = parts_space[2];
-        local t  = parts_space[3];
+        local month = parts_space[0];
+        local day   = parts_space[1];
+        local t  = parts_space[2];
         local timestamp = fmt("%s %s %s", month, day, t);
         local ts = time_convert(timestamp);
 
-        local log_source_ip = parts_space[4];
+        local log_source_ip = parts_space[3];
 	return 0;
 	}
 
 function job_submission_f(data: string): count
 	{
 
-	local parts_space = split(data, kv_splitter);
+	local parts_space = split_string(data, kv_splitter);
 	# Fill in time info
-        local month = parts_space[1];
-        local day   = parts_space[2];
-        local t  = parts_space[3];
+        local month = parts_space[0];
+        local day   = parts_space[1];
+        local t  = parts_space[2];
         local timestamp = fmt("%s %s %s", month, day, t);
         local ts = time_convert(timestamp);
 
-        local log_source_ip = parts_space[4];
+        local log_source_ip = parts_space[3];
 	return 0;
 	}
 
 function service_register_f(data: string): count
 	{
 
-	local parts_space = split(data, kv_splitter);
+	local parts_space = split_string(data, kv_splitter);
 	# Fill in time info
-        local month = parts_space[1];
-        local day   = parts_space[2];
-        local t  = parts_space[3];
+        local month = parts_space[0];
+        local day   = parts_space[1];
+        local t  = parts_space[2];
         local timestamp = fmt("%s %s %s", month, day, t);
         local ts = time_convert(timestamp);
 
-        local log_source_ip = parts_space[4];
+        local log_source_ip = parts_space[3];
 	return 0;
 	}
 
@@ -236,8 +236,8 @@ function secapi_f(data: string) : count
 
         # split on space
         print fmt("in secapi_f: %s", data);
-        local parts_space = split(data, kv_splitter);
-	local fname = to_upper(parts_space[6]);
+        local parts_space = split_string(data, kv_splitter);
+	local fname = to_upper(parts_space[5]);
 	print fmt("parsed val: %s", fname);
 	dispatcher[fname](data);
 
@@ -247,4 +247,6 @@ function secapi_f(data: string) : count
 event bro_init()
 {
 	Log::create_stream(SYSLOG_SECAPI::LOG, [$columns=SAPI_REQ]);
+	local filter_c: Log::Filter = [$name="default", $path="syslog_secapi"];
+	Log::add_filter(LOG, filter_c);
 }

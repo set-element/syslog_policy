@@ -27,8 +27,8 @@
 @load base/frameworks/input
 @load host_core
 
-@load SyslogReader/syslog_httpd
-@load SyslogReader/syslog_secAPI
+@load syslog_policy/syslog_httpd
+@load syslog_policy/syslog_secAPI
 
 module SYSLOG_PARSE;
 
@@ -53,8 +53,8 @@ export {
 	global sshd_pattern: pattern =/sshd/;
 	global nim_pattern: pattern =/nim-login/;
 	global bro_api_pattern: pattern =/newt|BROEVENT/;
-	global httpd_pattern: pattern = /httpd;
-	const  gatekeeper_pattern: pattern = /.*gatekeeper\[[0-9]{1,8}\]./;
+	global httpd_pattern: pattern = /httpd/;
+	global gatekeeper_pattern: pattern = /.*gatekeeper\[[0-9]{1,8}\]./;
 
 	global year = "1970" &redef;	# this will be set at start time
 	global tzone = "PST" &redef;	# this will be set at start time
@@ -154,9 +154,9 @@ function time_convert(data: string) : time
 	}
 
 # Take data of the form key:value and return the value portion
-function get_data(string: data) : split_string
+function get_data(data: string) : string
 	{
-		local retval = "";
+		local ret_val = "";
 		local delim: pattern = /:/;
 		ret_val = split_string(data, delim)[1];
 
@@ -167,8 +167,8 @@ function accepted_f(data: string) : count
 	{
 	# time:Apr 22 11:00:23	host:128.55.160.223	ident:sshd	pid:5437	message:Accepted keyboard-interactive/pam for eeloe from 131.243.223.234 port 61519 ssh2
 	local parts = split_string(data, tab_split);
-	local msg_parts = split_string( get_data(parts[4]), space_split )
-	local time_parts = split_string( get_data(parts[0]), space_split )
+	local msg_parts = split_string( get_data(parts[4]), space_split );
+	local time_parts = split_string( get_data(parts[0]), space_split );
 
 	local pid = get_data(parts[3]);
 	local log_source_ip = get_data(parts[1]);
@@ -199,8 +199,8 @@ function postponed_f(data: string) : count
 	{
 	# time:Apr 22 11:34:07	host:128.55.160.14	ident:sshd	pid:15962	message:Postponed keyboard-interactive for lgerhard from 128.55.162.250 port 36782 ssh2 [preauth]
 	local parts = split_string(data, tab_split);
-	local msg_parts = split_string( get_data(parts[4]), space_split )
-	local time_parts = split_string( get_data(parts[0]), space_split )
+	local msg_parts = split_string( get_data(parts[4]), space_split );
+	local time_parts = split_string( get_data(parts[0]), space_split );
 
 	local pid = get_data(parts[3]);
 	local log_source_ip = get_data(parts[1]);
@@ -241,8 +241,8 @@ function failed_f(data: string) : count
 	local parts = split_string(data, tab_split);
 
 	local ssh2_msg = split_string( get_data(parts[4]), s_splitter);
-	local msg_parts = split_string( ssh2_msg[0], space_split )
-	local time_parts = split_string( get_data(parts[0]), space_split )
+	local msg_parts = split_string( ssh2_msg[0], space_split );
+	local time_parts = split_string( get_data(parts[0]), space_split );
 	# note that the split will remove ssh2 from the string ..
 	local parts_len = | msg_parts |;
 
@@ -315,7 +315,7 @@ function nim_login_f(raw_data: string) : count
 	local cid: conn_id = build_connid( to_addr(orig_h), to_port(orig_p), to_addr(log_source_ip), to_port("443/tcp"));
 
 	# unpack the message part
-	local nim_result = string_split( nim_msg_txt, comma_split);
+	local nim_result = split_string( nim_msg_txt, comma_split);
 
 	if ( strcmp( nim_result[0], "login" ) == 0 ) {
 		action = "ACCEPTED";
@@ -368,7 +368,7 @@ function gatekeeper_f(data: string) : count
 	local gc_p7: pattern = /.*failed authorization.*/;
 
 	local parts = split_string(data, tab_split);
-	local time_parts = split_string( get_data(parts[0]), space_split )
+	local time_parts = split_string( get_data(parts[0]), space_split );
 
 	local pid = get_data(parts[3]);
 	local log_source_ip = get_data(parts[1]);

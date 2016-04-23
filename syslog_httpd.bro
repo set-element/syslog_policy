@@ -1,7 +1,7 @@
 #
 #
 
-@load SyslogReader/syslog_core.bro
+@load syslog_policy/syslog_core_fluentd
 
 module SYSLOG_HTTPD;
 

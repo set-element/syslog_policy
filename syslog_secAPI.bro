@@ -1,8 +1,8 @@
 #
 #
 
-@load SyslogReader/syslog_core.bro
-@load SyslogReader/syslog_consts
+@load syslog_policy/syslog_core_fluentd
+@load syslog_policy/syslog_consts
 
 module SYSLOG_SECAPI;
 

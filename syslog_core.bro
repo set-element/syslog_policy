@@ -13,8 +13,8 @@
 @load base/frameworks/input
 @load host_core
 
-@load SyslogReader/syslog_httpd
-@load SyslogReader/syslog_secAPI
+@load syslog_policy/syslog_httpd
+@load syslog_policy/syslog_secAPI
 
 module SYSLOG_PARSE;
 

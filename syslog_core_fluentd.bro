@@ -41,6 +41,7 @@ export {
         redef enum Notice::Type += {
                 SYSLOG_INPUT_LowTransactionRate,
                 SYSLOG_INPUT_HighTransactionRate,
+		SYSLOG_INPUT_DataReset,
 		};
 
 	global data_file = "/" &redef;
@@ -498,7 +499,7 @@ event set_year()
 	}
 
 
-event line(description: Input::EventDescription, tpe: Input::Event, LV: lineVals)
+event syslogLine(description: Input::EventDescription, tpe: Input::Event, LV: lineVals)
 	{
 	# Each line is fed to this event where it is digested and sent to the dispatcher
 	#  for appropriate processing
@@ -554,6 +555,9 @@ event stop_reader()
 		#print fmt("%s          stop-reader", gethostname());
                 Input::remove("syslog");
                 stop_sem = 1;
+
+		NOTICE([$note=SYSLOG_INPUT_DataReset,$msg=fmt("stopping reader")]);
+
                 }
         }
 
@@ -565,9 +569,12 @@ event start_reader()
 			["offset"] = "-1",
 			};
 
-		Input::add_event([$source=data_file, $config=config_strings, $reader=Input::READER_RAW, $mode=Input::STREAM, $name="syslog", $fields=lineVals, $ev=sshLine]);
+		Input::add_event([$source=data_file, $config=config_strings, $reader=Input::READER_RAW, $mode=Input::STREAM, $name="syslog", $fields=lineVals, $ev=syslogLine]);
 
                 stop_sem = 0;
+
+		NOTICE([$note=SYSLOG_INPUT_DataReset,$msg=fmt("starting reader")]);
+		
                 }
         }
 
@@ -628,11 +635,14 @@ function init_datastream(): count
 	#
 	if ( DATANODE && (file_size(data_file) != -1.0) ) {
 
+		print fmt("%s SYSLOG data file %s located", gethostname(), data_file);
+
 		local config_strings: table[string] of string = {
 			["offset"] = "-1",
 			};
 
-		Input::add_event([$source=data_file, $config=config_strings, $reader=Input::READER_RAW, $mode=Input::STREAM, $name="syslog", $fields=lineVals, $ev=sshLine]);
+		Input::add_event([$source=data_file, $config=config_strings, $reader=Input::READER_RAW, $mode=Input::STREAM, $name="syslog", $fields=lineVals, $ev=syslogLine]);
+
 
 		# start rate monitoring for event stream
 		schedule input_test_interval { sys_transaction_rate() };
@@ -647,6 +657,6 @@ function init_datastream(): count
 
 event bro_init()
 	{
-	event set_year();
 	init_datastream();
+	event set_year();
 	}

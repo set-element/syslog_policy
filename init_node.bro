@@ -11,5 +11,5 @@
 # host=sigma-n
 # aux_scripts="isshd_policy/init_node"
 #
-@load SyslogReader
+@load syslog_policy
 redef SYSLOG_PARSE::DATANODE = T;

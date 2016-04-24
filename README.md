@@ -22,5 +22,5 @@ And for the /etc/node.cfg file:
 	[syslog]
 	type=worker
 	host=sigma-n
-	aux_scripts="SyslogReader/init_node"
+	aux_scripts="syslog_policy/init_node"
 

@@ -156,13 +156,14 @@ function time_convert(data: string) : time
 
 # Take data of the form key:value and return the value portion
 function get_data(data: string) : string
-	{
-		local ret_val = "";
+        {
+		local ret_val: string_vec;
 		local delim: pattern = /:/;
-		ret_val = split_string(data, delim)[1];
 
-		return ret_val;
-	}
+		ret_val = split_string1(data, delim);
+
+		return ret_val[1];
+        }
 
 function accepted_f(data: string) : count
 	{

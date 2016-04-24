@@ -486,7 +486,7 @@ redef dispatcher += {
 	["HTTPD"] = SYSLOG_HTTPD::httpd_f,
 	};
 
-event set_year()
+function set_year()
 	{
 	local t = current_time();
 	local t_year = strftime("%Y",t);
@@ -495,7 +495,6 @@ event set_year()
 	SYSLOG_PARSE::year = t_year;
 	SYSLOG_PARSE::tzone = t_zone;
 
-	schedule year_refresh_interval { set_year() };
 	}
 
 
@@ -658,5 +657,5 @@ function init_datastream(): count
 event bro_init()
 	{
 	init_datastream();
-	event set_year();
+	set_year();
 	}

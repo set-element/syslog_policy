@@ -27,7 +27,7 @@
 @load base/frameworks/input
 @load host_core
 
-@load syslog_policy/syslog_httpd
+@load syslog_policy/syslog_httpd_fluentd
 @load syslog_policy/syslog_secAPI
 
 module SYSLOG_PARSE;
@@ -189,8 +189,7 @@ function accepted_f(data: string) : count
 	local cid: conn_id = build_connid( to_addr(orig_h), to_port(orig_p), to_addr(log_source_ip), to_port("22/tcp"));
 	local key = fmt("%s", sha1_hash(log_source_ip, pid, orig_h, orig_p));
 
-	print fmt("KEY ACCEPT: %s %s %s %s %s %s", auth_id, key,log_source_ip, pid, orig_h, orig_p);
-	#print fmt("ACCEPT %s[%s] @ %s:%s -> %s", auth_id, auth_type, orig_h, orig_p, log_source_ip);
+	#print fmt("KEY ACCEPT: %s %s %s %s %s %s", auth_id, key,log_source_ip, pid, orig_h, orig_p);
 
 	event USER_CORE::auth_transaction(ts, key, cid , auth_id, log_source_ip, "SYSLOG_SSH", "AUTHENTICATION", "ACCEPTED", auth_type, "DATA");
 	return 0;
@@ -221,8 +220,7 @@ function postponed_f(data: string) : count
 	local cid: conn_id = build_connid( to_addr(orig_h), to_port(orig_p), to_addr(log_source_ip), to_port("22/tcp"));
 	local key = fmt("%s", sha1_hash(log_source_ip, pid, orig_h, orig_p));
 
-	print fmt("KEY POST: %s %s %s %s %s %s ", auth_id, key,log_source_ip, pid, orig_h, orig_p);
-	#print fmt("POSTPONED %s[%s] @ %s:%s -> %s", auth_id, auth_type, orig_h, orig_p, log_source_ip);
+	#print fmt("KEY POST: %s %s %s %s %s %s ", auth_id, key,log_source_ip, pid, orig_h, orig_p);
 
 	event USER_CORE::auth_transaction(ts, key, cid , auth_id, log_source_ip, "SYSLOG_SSH", "AUTHENTICATION", "POSTPONED", auth_type, "DATA");
 	return 0;
@@ -264,8 +262,7 @@ function failed_f(data: string) : count
 	local cid: conn_id = build_connid( to_addr(orig_h), to_port(orig_p), to_addr(log_source_ip), to_port("22/tcp"));
 	local key = fmt("%s", sha1_hash(log_source_ip, pid, orig_h, orig_p));
 
-	print fmt("KEY FAIL: %s %s %s %s %s %s ", auth_id,key,log_source_ip, pid, orig_h, orig_p);
-	#print fmt("FAIL   %s[%s] @ %s:%s -> %s", auth_id, auth_type, orig_h, orig_p, log_source_ip);
+	#print fmt("KEY FAIL: %s %s %s %s %s %s ", auth_id,key,log_source_ip, pid, orig_h, orig_p);
 
 	event USER_CORE::auth_transaction(ts, key, cid , auth_id, log_source_ip, "SYSLOG_SSH", "AUTHENTICATION", "FAILED", auth_type, "DATA");
 	return 0;
@@ -486,7 +483,7 @@ redef dispatcher += {
 	["HTTPD"] = SYSLOG_HTTPD::httpd_f,
 	};
 
-function set_year()
+event set_year()
 	{
 	local t = current_time();
 	local t_year = strftime("%Y",t);
@@ -495,6 +492,7 @@ function set_year()
 	SYSLOG_PARSE::year = t_year;
 	SYSLOG_PARSE::tzone = t_zone;
 
+	schedule year_refresh_interval { set_year() };
 	}
 
 
@@ -511,9 +509,6 @@ event syslogLine(description: Input::EventDescription, tpe: Input::Event, LV: li
 	local parts = split_string(LV$d, tab_split);
 	local event_name = "NULL";
 	local event_action = "NULL";
-
-	if ( |parts| < 6 )
-		return;
 
 	event_name = get_data(parts[2]);		# ident fields
 
@@ -585,7 +580,8 @@ event sys_transaction_rate()
         # Use a global for input_count_delta so that the value is consistent across
         #   anybody looking at it.
         input_count_delta = input_count - input_count_prev;
-        print fmt("%s SYSLOG Log delta: %s", network_time(),input_count_delta);
+
+        #print fmt("%s SYSLOG Log delta: %s", network_time(),input_count_delta);
 
         # rate is too low - send a notice the first time
         if (input_count_delta <= input_low_water) {
@@ -632,7 +628,8 @@ function init_datastream(): count
 	# give this a try - do not spin up the input framework in the event
 	#   that the file is DNE
 	#
-	if ( DATANODE && (file_size(data_file) != -1.0) ) {
+
+	if ( DATANODE ) {
 
 		print fmt("%s SYSLOG data file %s located", gethostname(), data_file);
 
@@ -657,5 +654,5 @@ function init_datastream(): count
 event bro_init()
 	{
 	init_datastream();
-	set_year();
+	event set_year();
 	}

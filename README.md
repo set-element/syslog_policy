@@ -12,23 +12,15 @@ which tracks aggrigate activity across multiplle sources.
 The code has been written to facilitate it being implemented on a worker node which 
 reports back to the manager who is responsible for tracking aggrigate behaviors.
 
-To local master config:
+To your main config file add:
 
-@ifdef (SYSLOG_PARSE::data_file)
-redef SYSLOG_PARSE::data_file = "/home/bro/logs/RAW/DATA_0";
-@endif
+	@load syslog_policy
+	redef SYSLOG_PARSE::data_file = "/home/bro/logs/RAW/DATA_0";
 
-redef Cluster::worker2manager_events += /SYSLOG_PARSE*/;
+And for the /etc/node.cfg file:
 
-node config:
+	[syslog]
+	type=worker
+	host=sigma-n
+	aux_scripts="SyslogReader/init_node"
 
-[syslog]
-type=worker
-host=sigma-n
-aux_scripts="SyslogReader/init_node"
-
-
-
-Line add
-
-Changes made so that string() deprication is addressed, will need to be run on >= version 2.4

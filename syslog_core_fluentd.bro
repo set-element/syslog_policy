@@ -29,6 +29,7 @@
 
 @load syslog_policy/syslog_httpd_fluentd
 @load syslog_policy/syslog_secAPI
+@load syslog_policy/syslog_globus_fluentd
 
 module SYSLOG_PARSE;
 
@@ -352,135 +353,14 @@ function nersc_sec_api_f(data: string) : count
 	return 0;
 	}
 
-function gatekeeper_f(data: string) : count
-	{
-	# this one is a little different in that the record generation is stateful because of the
-	#   nulti-line nature of the raw data
-	# We can break this put into it's own file in time
-	#
-	local gc_p1: pattern = /.* Got connection.*/;			# Init the data struct
-	local gc_p2: pattern = /.* Requested service:.*/;		# ok
-	local gc_p3: pattern = /.* Authorized as local user:.*/;	# ok
-	local gc_p4: pattern = /.* Authorized as local uid:.*/;		# ok
-	local gc_p5: pattern = /.*   and local gid:.*/; 		# Normal exit point
-	local gc_p6: pattern = /.* Authenticated globus user.*/;	# id globus user
-	local gc_p7: pattern = /.*failed authorization.*/;
-
-	local parts = split_string(data, tab_split);
-	local time_parts = split_string( get_data(parts[0]), space_split );
-
-	local pid = get_data(parts[3]);
-	local log_source_ip = get_data(parts[1]);
-
-	local month = time_parts[0];
-	local day   = time_parts[1];
-	local t  = time_parts[2];
-	local timestamp = fmt("%s %s %s", month, day, t);
-	local ts = time_convert(timestamp);
-
-	local key = fmt("%s%s", pid, log_source_ip);
-
-	local t_gcr: gatekeeperRec;
-	local record_mod = 0;
-	local flush_value = 0;
-
-
-	# lookup state structure
-	if ( key !in gc_table ) {
-		# new struct
-		t_gcr$start = ts;
-		t_gcr$log_source_ip = log_source_ip;
-		}
-	else
-		t_gcr = gc_table[key];
-
-	# Now begin processing the input data
-	local msg_data = get_data(parts[4]);
-
-	if ( gc_p1 == msg_data ) {		# /.* Got connection .*/
-		# form: ... Got connection A.B.C.D ...
-		# extract the connecting IP
-
-		local tmp_pat: pattern = /"Got connection "/;
-		local t_p = split_string_all(msg_data, tmp_pat)[2]; 	 # snip off IP and trailing
-		local t_ip = split_string(t_p, kv_splitter)[0]; # remove trailing
-
-		t_gcr$orig_h = t_ip;
-		record_mod = 1;
-		}
-	else if ( gc_p2 == msg_data ) {	# /.* Requested service:.*/
-		t_gcr$service = parts[ |parts| - 2  ];
-
-		record_mod = 1;
-		}
-	else if ( gc_p3 == msg_data ) {	# /.* Authorized as local user:.*/
-		t_gcr$l_user = parts[ |parts| - 1 ];
-
-		record_mod = 1;
-		}
-	else if ( gc_p4 == msg_data ) {	# /.* Authorized as local uid:.*/
-		t_gcr$l_uid = to_count(parts[ |parts| - 1 ]);
-
-		record_mod = 1;
-		}
-	else if ( gc_p5 == msg_data ) {	# /.*   and local gid:.*/
-		t_gcr$l_gid = to_count(parts[ |parts| - 1 ]);
-		t_gcr$success = "ACCEPTED";
-
-		record_mod = 1;
-		flush_value = 1;
-		}
-	else if ( gc_p6 == msg_data ) {	# /.* Authenticated globus user:.*/
-		# since the record can contain multiple spaces, we snip on the RE
-		local tmp_pat2: pattern = /" Authenticated globus user: "/;
-		local t_id = split_string_all(msg_data, tmp_pat2)[2];
-
-		t_gcr$g_user = t_id;
-
-		record_mod = 1;
-		}
-	else if ( gc_p7 == msg_data ) {	# ERROR
-		# this might be a bit messy as the assumption is that all
-		#  error messages (of this form) are well behaved...
-		# for the time being we can split on the general handler
-
-		local tmp_pat3: pattern = /"globus_gss_assist: "/;
-		t_gcr$error_msg = split_string_all(data, tmp_pat3)[2];
-		t_gcr$success = "FAILED";
-
-		record_mod = 1;
-		flush_value = 1;
-		}
-	else {
-		# unknown line - skip for now
-		}
-
-
-	if ( record_mod == 1 )
-		gc_table[key] = t_gcr;
-
-	if ( flush_value == 1 ) {
-		# write to spesific globus log
-		Log::write(LOG, t_gcr);
-
-		# then figure something out to give to the central authwatch
-		#
-		local cid: conn_id = build_connid( to_addr(t_gcr$orig_h), to_port("0/tcp"), to_addr(t_gcr$log_source_ip), to_port("0/tcp"));
-		event USER_CORE::auth_transaction(t_gcr$start, "NULL", cid , t_gcr$l_user, t_gcr$log_source_ip, "GATEKEEPER", "AUTHENTICATION", t_gcr$success, "GLOBUS", t_gcr$g_user);
-
-		}
-
-	return 0;
-	}
-
-
 redef dispatcher += {
 	["ACCEPTED"] = accepted_f,
 	["POSTPONED"] = postponed_f,
 	["FAILED"] = failed_f,
 	["NIM_LOGIN"] = nim_login_f,
 	["BROEVENT"] = SYSLOG_SECAPI::secapi_f,
-	["GATEKEEPER"] = gatekeeper_f,
+	["GATEKEEPER"] = SYSLOG_GLOBUS::gatekeeper_f,
+	["MYPROXY-SERVER"] = SYSLOG_GLOBUS::myproxy_f,
 	["HTTPD"] = SYSLOG_HTTPD::httpd_f,
 	};
 
@@ -518,7 +398,7 @@ event syslogLine(description: Input::EventDescription, tpe: Input::Event, LV: li
 		# action will be the first word in the message field.
 		local message_data = get_data(parts[4]);
 		event_action = to_upper( split_string(message_data, space_split)[0] );
-		
+
 		if ( event_action in dispatcher)
 			dispatcher[event_action](LV$d);
 		}
@@ -535,6 +415,11 @@ event syslogLine(description: Input::EventDescription, tpe: Input::Event, LV: li
 
 	else if ( gatekeeper_pattern == event_name ) {
 			event_action = "GATEKEEPER";
+			dispatcher[event_action](LV$d);
+		}
+
+	else if ( myproxy_pattern == event_name ) {
+			event_action = "MYPROXY-SERVER";
 			dispatcher[event_action](LV$d);
 		}
 
@@ -569,7 +454,7 @@ event start_reader()
                 stop_sem = 0;
 
 		NOTICE([$note=SYSLOG_INPUT_DataReset,$msg=fmt("starting reader")]);
-		
+
                 }
         }
 

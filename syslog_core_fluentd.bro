@@ -28,7 +28,7 @@
 @load host_core
 
 @load syslog_policy/syslog_httpd_fluentd
-@load syslog_policy/syslog_secAPI
+@load syslog_policy/syslog_secAPI_fluentd
 @load syslog_policy/syslog_globus_fluentd
 
 module SYSLOG_PARSE;
@@ -56,7 +56,8 @@ export {
 	global nim_pattern: pattern =/nim-login/;
 	global bro_api_pattern: pattern =/newt|BROEVENT/;
 	global httpd_pattern: pattern = /httpd/;
-	global gatekeeper_pattern: pattern = /.*gatekeeper\[[0-9]{1,8}\]./;
+	global gatekeeper_pattern: pattern = /gatekeeper/;
+	global myproxy_pattern: pattern = /myproxy-server/;
 
 	global year = "1970" &redef;	# this will be set at start time
 	global tzone = "PST" &redef;	# this will be set at start time
@@ -278,15 +279,15 @@ function failed_f(data: string) : count
 #
 #
 
-function nim_login_f(raw_data: string) : count
+function nim_login_f(data: string) : count
 	{
 	local invalid_u: pattern = /.*invalid username format.*/;
 	local invalid_p: pattern = /.*invalid password format.*/;
-	local nim_delim: pattern = /#011/;
+	local nim_delim: pattern = /\#011/;
 	local comma_split: pattern = /,/;
 
 	local action = "NULL";
-	local data = "DATA";
+	local output_data = "";
 
 	local parts = split_string(data, tab_split);
 	local time_parts = split_string( get_data(parts[0]), space_split );
@@ -326,29 +327,18 @@ function nim_login_f(raw_data: string) : count
 
 	# this will only match in the situation where there is additional info in the msg_data blocks
 	if ( |nim_result| > 1 ) {
-		data = "";
+		output_data = "";
 
 		if ( invalid_u == nim_result[1] )
-			data = fmt("%s%s", data, "INVALID_USER_FORMAT");
+			output_data = fmt("%s%s", output_data, "INVALID_USER_FORMAT");
 
 		if ( invalid_p == nim_result[1] )
-			data = fmt("%s %s", data, "INVALID_PASWD_FORMAT");
+			output_data = fmt("%s %s", output_data, "INVALID_PASWD_FORMAT");
 
 		}
 
-	#print fmt("NIM_AUTH   %s %s PASSWD %s %s", auth_id, log_source_ip, action, data);
-	event USER_CORE::auth_transaction(ts, "NULL", cid , auth_id, log_source_ip, "SYSLOG_NIM", "AUTHENTICATION", action, "PASSWORD", data);
-
-	return 0;
-	}
-
-# Oct  5 19:32:15 128.55.81.150 BROEVENT USER_DATA 1381026735.000000 client newt shuber "<bound method QueueResourceAdapter.method_proxy of <newt.queue.v ...
-#
-function nersc_sec_api_f(data: string) : count
-	{
-	print fmt("SEC API: %s", data);
-	local be_pattern: pattern = /" BROEVENT "/;
-
+	#print fmt("NIM_AUTH   %s %s PASSWD %s %s", auth_id, log_source_ip, action, output_data);
+	event USER_CORE::auth_transaction(ts, "NULL", cid , auth_id, log_source_ip, "SYSLOG_NIM", "AUTHENTICATION", action, "PASSWORD", output_data);
 
 	return 0;
 	}

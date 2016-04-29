@@ -1,6 +1,7 @@
 # Globus Syslog analyzer
 # Analyzer for gatekeeper and my-proxy system logs
 #
+@load syslog_policy/syslog_core_fluentd
 
 module SYSLOG_GLOBUS;
 
@@ -51,7 +52,7 @@ export {
 		#
 		auth: string &log &default="NULL";
 		auth_err_msg: string &log &default="NULL";
-		}
+		};
 
 	#  indexed by [resp_h,pid] => string
 	global gc_table: table[string] of gatekeeperRec;
@@ -60,7 +61,7 @@ export {
 	global mp_table: table[string] of myproxyRec;
 
 	global myproxy_f: function(data: string) : count;
-	global globus_f: function(data: string) : count;
+	global gatekeeper_f: function(data: string) : count;
 
 	} # end export
 
@@ -77,7 +78,7 @@ function time_convert(data: string) : time
 	# like parse_string, we can get away with not having the
 	#   time zone in the equsn.
 	# Linux:
-	date_mod = fmt("%s %s", year,data);
+	date_mod = fmt("%s %s", "2016",data);
 	# FreeBSD
 	#date_mod = fmt("%s %s %s", tzone,year,data);
 
@@ -87,6 +88,18 @@ function time_convert(data: string) : time
 	local ret_val = strptime(parse_string, date_mod_p);
 
 	return ret_val;
+	}
+
+function build_connid(orig_h:addr, orig_p:port , log_source_ip:addr, resp_p:port) : conn_id
+	{
+	local t_conn_id: conn_id;
+
+	t_conn_id$orig_h = orig_h;
+	t_conn_id$orig_p = orig_p;
+	t_conn_id$resp_h = log_source_ip;
+	t_conn_id$resp_p = resp_p;
+
+	return t_conn_id;
 	}
 
 # Take data of the form key:value and return the value portion
@@ -149,27 +162,32 @@ function myproxy_f( data: string) : count
 			# sample: myproxy-server v6.1 ....
 			# just use to init the data struct
 			record_mod = 1;
+			mp_table[key] = t_mpr;
 			}
 		else if ( mp_p1 == msg_data ) {	# /^max certificate lifetime.*/;
 			# max certificate lifetime: 997200 seconds
 			t_mpr$max_cert_lifetime = to_count(msg_data_parts[3]);
 			record_mod = 1;
+			mp_table[key] = t_mpr;
 			}
 		else if ( mp_p2 == msg_data ) {	# /^Connection from.*/
 			# Connection from 174.129.226.69
 			t_mpr$orig_h = msg_data_parts[2];
 			record_mod = 1;
+			mp_table[key] = t_mpr;
 			}
 		else if ( mp_p3 == msg_data ) {	# /^Received.*/;
 			# Received GET request for username userabc
 			t_mpr$request = msg_data_parts[1];
 			t_mpr$username = msg_data_parts[5];
 			record_mod = 1;
+			mp_table[key] = t_mpr;
 			}
 		else if ( mp_p4 == msg_data ) {	# /^PAM authentication succeeded.*/;
 			# PAM authentication succeeded for userabc
 			t_mpr$auth = "T";
 			record_mod = 1;
+			mp_table[key] = t_mpr;
 			}
 		else if ( mp_p5 == msg_data ) {	# /^Got a cert request for user.*/
 			# Got a cert request for user "userabc", with pubkey hash "0x103ad383", and lifetime "86400"
@@ -177,24 +195,26 @@ function myproxy_f( data: string) : count
 			local msg_data_q5 = split_string(msg_data, /\"/);
 
 			t_mpr$cert_request_hash = msg_data_q5[3];
-			t_mpr$cert_request_lifetime = msg_data_q5[5];
+			t_mpr$cert_request_lifetime = to_count(msg_data_q5[5]);
 			record_mod = 1;
+			mp_table[key] = t_mpr;
 			}
 		else if ( mp_p6 == msg_data ) {	# /^Issued certificate for user.*/
 			# Issued certificate for user "danielsf", with DN "/DC=gov/DC=nersc/OU=People/CN=Scott Daniel 58711", lifetime "86400", and serial number "0x9B:F3"
 			# parse one more time on " character
 			local msg_data_q6 = split_string(msg_data, /\"/);
 
-			t_mpr$cert_issue_lifetime = msg_data_q6[5]
+			t_mpr$cert_issue_lifetime = to_count(msg_data_q6[5]);
 			t_mpr$cert_issue_DN = msg_data_q6[3];
 			record_mod = 1;
 			flush_value = 1;
+			mp_table[key] = t_mpr;
 			}
 		else if ( mp_p7 == msg_data ) {	# /^Exiting:.*/
 			# Exiting: Mapping call-out returned error Expired unknown username: emorin
 			# invalid password
 			t_mpr$auth = "F";
-			local error = "":
+			local error = "";
 
 			if ( |msg_data_parts| > 2 ) {
 				error = "ERR_UNKNOWN_USR";
@@ -203,14 +223,15 @@ function myproxy_f( data: string) : count
 				error = "ERR_INVALID_PASS";
 				}
 
-			t$mpr$auth_err_msg = error;
+			t_mpr$auth_err_msg = error;
 
 			record_mod = 1;
 			flush_value = 1;
+			mp_table[key] = t_mpr;
 			}
 
-		if ( record_mod == 1 )
-			mp_table[key] = t_mpr;
+		#if ( record_mod == 1 )
+		#	mp_table[key] = t_mpr;
 
 		if ( flush_value == 1 ) 	{
 			# write to spesific globus log
@@ -220,11 +241,12 @@ function myproxy_f( data: string) : count
 
 			# then figure something out to give to the central authwatch
 			#
-			local cid: conn_id = build_connid( to_addr(t_gcr$orig_h), to_port("0/tcp"), to_addr(t_gcr$log_source_ip), to_port("0/tcp"));
-			event USER_CORE::auth_transaction(t_mpr$start, "NULL", cid , t_mpr$username, t_mpr$log_source_ip, "GATEKEEPER", "AUTHENTICATION", t_gcr$success, "GLOBUS", t_gcr$g_user);
+			local cid: conn_id = build_connid( to_addr(t_mpr$orig_h), to_port("0/tcp"), to_addr(t_mpr$log_source_ip), to_port("0/tcp"));
+			event USER_CORE::auth_transaction(t_mpr$start, "NULL", cid , t_mpr$username, t_mpr$log_source_ip, "MYPROXY", "AUTHENTICATION", t_mpr$auth, "GLOBUS", t_mpr$username);
 
 			}
 
+		return 0;
 	}
 
 function gatekeeper_f(data: string) : count
@@ -354,7 +376,7 @@ event bro_init()
 	local filter_c: Log::Filter = [$name="default", $path="gatekeeper"];
 	Log::add_filter(LOG, filter_c);
 
-	Log::create_stream(SYSLOG_GLOBUS::LOG2, [$columns=gatekeeperRec]);
+	Log::create_stream(SYSLOG_GLOBUS::LOG2, [$columns=myproxyRec]);
 	local filter_c2: Log::Filter = [$name="default", $path="myproxy"];
 	Log::add_filter(LOG2, filter_c2);
 

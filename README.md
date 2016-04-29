@@ -24,3 +24,5 @@ And for the /etc/node.cfg file:
 	host=sigma-n
 	aux_scripts="syslog_policy/init_node"
 
+There are a set of (somewhat more updated) files which are designed to work with the parsed data
+from fluentd (http://www.fluentd.org) which I have started using.

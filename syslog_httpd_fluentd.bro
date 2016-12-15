@@ -11,7 +11,7 @@ export {
 	redef enum Log::ID += { LOG };
 
         global kv_splitter: pattern = /[\ \t]+/;
-        global tab_splitter: pattern = /[\t]+/;
+        global tab_splitter: pattern = /[\t]+|\\x09/;
         global space_splitter: pattern = /[\ ]+/;
         global one_space: string = " ";
 	const year = 2016;
@@ -19,7 +19,8 @@ export {
         type HTTP_REQ: record {
                 ts: time &log;
                 logip: string &log &default= "NULL";
-                cip: addr &log &default = 127.0.0.0;
+                #cip: addr &log &default = 127.0.0.0;
+                cip: string &log &default = "NULL";
                 ident: string &log &default = "NULL";
                 uid: string &log &default = "NULL";
                 domain: string &log &default="NULL";
@@ -102,15 +103,36 @@ function httpd_log_f(data: string) : count
 	# split data up in a variety of ways
 	local parts_tab = split_string( data, tab_splitter);
 	local time_parts = split_string( get_data(parts_tab[0]), space_splitter );
+
 	local msg_raw = get_data( parts_tab[4] );
 	local msg_space = split_string( msg_raw, space_splitter);
         local msg_quote = split_string( msg_raw, /\"/);
 
+	# do a little sanity checking here cause if these are not right, the data 
+	#  will not be worth looking at
+	if ( |parts_tab| < 5 )
+		return 1;
+
+	if ( |msg_quote| < 5 )
+		return 1;
+
+	# sometimes there are more fields than others,  which is kinda frustrating
+	#  here the domain name is only there when it feels like.  This is the
+	#  duct tape that binds ...
+        local domain_name = "NO_DOMAIN";
+	local offset = 0;
+	local t_offtest = split_string1( msg_raw, /\[/)[0];
+	local offset_test = | split_string( t_offtest, space_splitter) |;
+
+	if ( offset_test == 5 ) {
+		offset = 1;
+		domain_name = msg_space[0];
+ 		}
+
         local log_source_ip = get_data( parts_tab[1] );
-        local domain_name = msg_space[0];
-        local client_ip = msg_space[1];
-        local ident = msg_space[2];
-        local uid = msg_space[3];
+        local client_ip = msg_space[0+offset];
+        local ident = msg_space[1+offset];
+        local uid = msg_space[2+offset];
 
         local request = split_string1(msg_quote[1], space_splitter)[1];
         local referrer = msg_quote[3];
@@ -142,7 +164,8 @@ function httpd_log_f(data: string) : count
         t_HTTP_REQ$ts = ts;
         t_HTTP_REQ$logip = log_source_ip;
         t_HTTP_REQ$domain = domain_name;
-        t_HTTP_REQ$cip = to_addr(client_ip);
+        t_HTTP_REQ$cip = client_ip;
+        #t_HTTP_REQ$cip = to_addr(client_ip);
         t_HTTP_REQ$ident = ident;
         t_HTTP_REQ$uid = uid;
         t_HTTP_REQ$method = method;
@@ -170,7 +193,8 @@ function httpd_f(data: string) : count
 	local error_log: pattern = /.*\[error\].*/;
         local parts_space = split_string(data, tab_splitter);
 	local msg_parse = split_string( parts_space[4], space_splitter );
-
+if ( |parts_space| < 4 )
+	print fmt("error state for function httpd_f: %s", data);
 	# route log vs error
 	if ( error_log == msg_parse[0] ) {
 		httpd_error_f(data);

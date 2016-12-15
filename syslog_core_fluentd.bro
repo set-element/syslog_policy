@@ -30,6 +30,7 @@
 @load syslog_policy/syslog_httpd_fluentd
 @load syslog_policy/syslog_secAPI_fluentd
 @load syslog_policy/syslog_globus_fluentd
+@load syslog_policy/syslog_su_fluentd
 
 module SYSLOG_PARSE;
 
@@ -49,7 +50,7 @@ export {
 
 	global kv_splitter: pattern = /[\ \t]+/;
 	global space_split: pattern = /[\ ]+/;
-	global tab_split: pattern = /[\t]/;
+	global tab_split: pattern = /[\t]|\\x09/;
 	global one_space: string = " ";
 
 	global sshd_pattern: pattern =/sshd/;
@@ -58,6 +59,7 @@ export {
 	global httpd_pattern: pattern = /httpd/;
 	global gatekeeper_pattern: pattern = /gatekeeper/;
 	global myproxy_pattern: pattern = /myproxy-server/;
+	global su_sudo_pattern: pattern = /su|sudo/;
 
 	global year = "1970" &redef;	# this will be set at start time
 	global tzone = "PST" &redef;	# this will be set at start time
@@ -106,7 +108,7 @@ export {
         global input_count_prev: count = 1 &redef;
         global input_count_delta: count = 0 &redef;
         #  0=pre-init, 1=ok, 2=in low error
-        global input_count_state: count = 0 &redef;
+        global su_input_count_state: count = 0 &redef;
 	const DATANODE = F &redef;
 
 	global build_connid: function(orig_h:addr, orig_p:port , log_source_ip:addr, resp_p:port) : conn_id;
@@ -352,6 +354,7 @@ redef dispatcher += {
 	["GATEKEEPER"] = SYSLOG_GLOBUS::gatekeeper_f,
 	["MYPROXY-SERVER"] = SYSLOG_GLOBUS::myproxy_f,
 	["HTTPD"] = SYSLOG_HTTPD::httpd_f,
+	["SUDO"] = SYSLOG_SUDO::su_sudo_f,
 	};
 
 event set_year()
@@ -384,6 +387,10 @@ event syslogLine(description: Input::EventDescription, tpe: Input::Event, LV: li
 	event_name = get_data(parts[2]);		# ident fields
 
 	if ( sshd_pattern == event_name ) {
+		if ( |parts| < 4 ) {
+			print fmt("syslog sshd_pattern too short: %s", LV$d);
+			}
+
 		# must parse out the action - i.e. accept/fail/postponed
 		# action will be the first word in the message field.
 		local message_data = get_data(parts[4]);
@@ -415,6 +422,10 @@ event syslogLine(description: Input::EventDescription, tpe: Input::Event, LV: li
 
 	else if ( httpd_pattern == event_name ) {
 			event_action = "HTTPD";
+			dispatcher[event_action](LV$d);
+		}
+	else if ( su_sudo_pattern == event_name ) {
+			event_action = "SUDO";
 			dispatcher[event_action](LV$d);
 		}
 	}
@@ -450,7 +461,7 @@ event start_reader()
 
 event sys_transaction_rate()
 	{
-        # Values for input_count_state:
+        # Values for su_input_count_state:
         #  0=pre-init, 1=ok, 2=in error
         # We make the assumption here that the low_water < high_water
         # Use a global for input_count_delta so that the value is consistent across
@@ -463,11 +474,11 @@ event sys_transaction_rate()
         if (input_count_delta <= input_low_water) {
 
                 # only send the notice on the first instance
-                if ( input_count_state != 2 ) {
+                if ( su_input_count_state != 2 ) {
                         NOTICE([$note=SYSLOG_INPUT_LowTransactionRate,
                                 $msg=fmt("event rate %s per %s", input_count_delta, input_test_interval)]);
 
-                        input_count_state = 2; # 2: transaction rate
+                        su_input_count_state = 2; # 2: transaction rate
                         }
 
                 # Now reset the reader
@@ -478,17 +489,17 @@ event sys_transaction_rate()
         if (input_count_delta >= input_high_water) {
 
                 # only send the notice on the first instance
-                if ( input_count_state != 2 ) {
+                if ( su_input_count_state != 2 ) {
                         NOTICE([$note=SYSLOG_INPUT_HighTransactionRate,
                                 $msg=fmt("event rate %s per %s", input_count_delta, input_test_interval)]);
 
-                        input_count_state = 2; # 2: transaction rate
+                        su_input_count_state = 2; # 2: transaction rate
                         }
                 }
 
         # rate is ok
         if ( (input_count_delta > input_low_water) && (input_count_delta < input_high_water) ) {
-                input_count_state = 1;
+                su_input_count_state = 1;
                 }
 
         # rotate values
